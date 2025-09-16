@@ -159,9 +159,7 @@ object OpenApi3Generator {
         }
 
         this.components = Components().apply {
-            schemas = schemasToKeys.keys.map {
-                schemasToKeys.getValue(it) to it
-            }.toMap()
+            schemas = schemasToKeys.keys.associateByTo(mutableMapOf()) { schemasToKeys.getValue(it) }
         }
 
         this.components
