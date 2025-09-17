@@ -42,7 +42,7 @@ val nonSampleProjects =  subprojects.filterNot { it.isSampleProject() }
 allprojects {
 
     group = "com.epages"
-    version = scmVer
+    version = "0.19.4-SNAPSHOT"
 
     if (!isSampleProject()) {
         apply(plugin = "java")
