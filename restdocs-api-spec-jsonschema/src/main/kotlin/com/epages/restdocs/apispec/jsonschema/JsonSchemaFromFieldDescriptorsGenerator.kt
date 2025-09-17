@@ -25,7 +25,6 @@ import org.everit.json.schema.Schema
 import org.everit.json.schema.StringSchema
 import org.everit.json.schema.internal.JSONPrinter
 import java.io.StringWriter
-import java.util.ArrayList
 import java.util.Collections.emptyList
 import java.util.function.Predicate
 
@@ -153,6 +152,7 @@ class JsonSchemaFromFieldDescriptorsGenerator {
         if (propertyField?.fieldDescriptor?.let { isRequired(it) } == true) {
             builder.addRequiredProperty(propertyName)
         }
+        val schemaName = propertyField?.fieldDescriptor?.attributes?.schemaName
         if (remainingSegments.isNotEmpty() && JsonFieldPath.isArraySegment(
                 remainingSegments[0]
             )
@@ -160,15 +160,15 @@ class JsonSchemaFromFieldDescriptorsGenerator {
             traversedSegments.add(remainingSegments[0])
             builder.addPropertySchema(
                 propertyName,
-
                 ArraySchema.builder()
-                    .allItemSchema(traverse(traversedSegments, fields, ObjectSchema.builder()))
+                    .allItemSchema(
+                        traverse(traversedSegments, fields, ObjectSchema.builder().apply { title(schemaName) })
+                    )
                     .applyConstraints(propertyField?.fieldDescriptor)
                     .description(propertyField?.fieldDescriptor?.description)
                     .build()
             )
         } else {
-            val schemaName = propertyField?.fieldDescriptor?.attributes?.schemaName
             builder.addPropertySchema(
                 propertyName,
                 traverse(
@@ -254,7 +254,7 @@ class JsonSchemaFromFieldDescriptorsGenerator {
                     NullSchema.builder().nullable()
                 }
                 "empty" -> EmptySchema.builder()
-                "object" -> ObjectSchema.builder()
+                "object" -> ObjectSchema.builder().apply { if (attributes.schemaName != null) title(attributes.schemaName) }
                 "array" -> ArraySchema.builder().applyConstraints(this).allItemSchema(arrayItemsSchema())
                 "boolean" -> BooleanSchema.builder()
                 "number" -> NumberSchema.builder().applyConstraints(this)

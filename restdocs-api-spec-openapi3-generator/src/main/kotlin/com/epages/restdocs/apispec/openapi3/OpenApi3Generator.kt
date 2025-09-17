@@ -14,7 +14,6 @@ import com.epages.restdocs.apispec.model.SimpleType
 import com.epages.restdocs.apispec.model.groupByPath
 import com.epages.restdocs.apispec.openapi3.SecuritySchemeGenerator.addSecurityDefinitions
 import com.epages.restdocs.apispec.openapi3.SecuritySchemeGenerator.addSecurityItemFromSecurityRequirements
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import io.swagger.v3.core.util.Json
 import io.swagger.v3.oas.models.Components
@@ -26,6 +25,7 @@ import io.swagger.v3.oas.models.examples.Example
 import io.swagger.v3.oas.models.headers.Header
 import io.swagger.v3.oas.models.info.Contact
 import io.swagger.v3.oas.models.info.Info
+import io.swagger.v3.oas.models.media.ArraySchema
 import io.swagger.v3.oas.models.media.BooleanSchema
 import io.swagger.v3.oas.models.media.Content
 import io.swagger.v3.oas.models.media.IntegerSchema
@@ -86,31 +86,37 @@ object OpenApi3Generator {
 
     private fun OpenAPI.makeSubSchema() {
         val schemas = this.components.schemas
-        val subSchemas = mutableMapOf<String, Schema<Any>?>()
+        val subSchemas = mutableMapOf<String, Schema<*>?>()
         schemas.forEach {
             val schema = it.value
-            if (schema.properties != null) {
-                makeSubSchema(subSchemas, schema.properties)
-            }
+            makeSubSchema(subSchemas, schema.childSchemas)
         }
 
         if (subSchemas.isNotEmpty()) {
-            this.components.schemas.putAll(subSchemas)
+            this.components.schemas.putAll(subSchemas.filterKeys { it !in schemas })
         }
     }
 
-    private fun makeSubSchema(schemas: MutableMap<String, Schema<Any>?>, properties: Map<String, Schema<Any>?>) {
-        properties.asSequence().filter { it.value?.title != null }.forEach {
-            val objectMapper = jacksonObjectMapper()
-            val subSchema = it.value
-            val strSubSchema = objectMapper.writeValueAsString(subSchema)
-            val copySchema = objectMapper.readValue(strSubSchema, subSchema?.javaClass)
-            val schemaTitle = copySchema.title
-            subSchema?.`$ref`("#/components/schemas/$schemaTitle")
-            schemas[schemaTitle] = copySchema
-            makeSubSchema(schemas, copySchema.properties)
+    private fun makeSubSchema(schemas: MutableMap<String, Schema<*>?>, properties: List<Schema<*>>) {
+        properties.forEach { subSchema ->
+            if (subSchema.title != null) {
+                val strSubSchema = Json.mapper().writeValueAsString(subSchema)
+                val copySchema = Json.mapper().readValue(strSubSchema, subSchema.javaClass)
+                val schemaTitle = copySchema.title
+                subSchema.`$ref`("#/components/schemas/$schemaTitle")
+                schemas[schemaTitle] = copySchema
+                makeSubSchema(schemas, copySchema.childSchemas)
+            } else {
+                makeSubSchema(schemas, subSchema.childSchemas)
+            }
         }
     }
+
+    private val Schema<*>.childSchemas: List<Schema<*>> get() =
+        when (this) {
+            is ArraySchema -> listOf(items)
+            else -> properties?.values?.filterNotNull().orEmpty()
+        }
 
     fun generateAndSerialize(
         resources: List<ResourceModel>,
