@@ -31,7 +31,7 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-hateoas:$springBootVersion")
     testImplementation("org.hibernate.validator:hibernate-validator:6.0.10.Final")
     testImplementation("org.assertj:assertj-core:3.10.0")
-    testImplementation("com.jayway.jsonpath:json-path:2.3.0")
+    testImplementation("com.jayway.jsonpath:json-path:2.9.0")
 
     testImplementation("com.github.java-json-tools:json-schema-validator:2.2.10")
     testImplementation("com.github.erosb:everit-json-schema:1.11.0")
