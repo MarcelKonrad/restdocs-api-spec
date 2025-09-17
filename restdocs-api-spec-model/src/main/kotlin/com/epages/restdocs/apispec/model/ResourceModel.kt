@@ -26,8 +26,26 @@ fun List<ResourceModel>.groupByPath(): Map<String, List<ResourceModel>> {
         .groupBy { it.request.path }
 }
 
+enum class Criterion {
+    ALL_OF,
+    ANY_OF,
+    ONE_OF
+}
+
+data class Discriminator(
+    val propertyName: String,
+    val mapping: Map<String, String>? = null
+)
+
+data class References(
+    val criterion: Criterion,
+    val schemaNames: List<String>,
+    val discriminator: Discriminator? = null,
+)
+
 data class Schema(
-    val name: String
+    val name: String,
+    val references: References? = null
 )
 
 data class RequestModel(

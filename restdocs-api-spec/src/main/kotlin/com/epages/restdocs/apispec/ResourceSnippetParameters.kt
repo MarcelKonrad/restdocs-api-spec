@@ -155,14 +155,34 @@ class ParameterDescriptorWithType(val name: String) : IgnorableDescriptor<Parame
     }
 }
 
+enum class Criterion {
+    ALL_OF,
+    ANY_OF,
+    ONE_OF
+}
+
+data class Discriminator(
+    val propertyName: String,
+    val mapping: Map<String, String>? = null
+)
+
+data class References(
+    val criterion: Criterion,
+    val schemaNames: List<String>,
+    val discriminator: Discriminator? = null,
+)
+
 /**
  * Represents a request/response object schema.
  */
-data class Schema(val name: String) {
-
+data class Schema(
+    val name: String,
+    val references: References? = null,
+) {
     companion object {
         @JvmStatic
-        fun schema(name: String): Schema = Schema(name)
+        @JvmOverloads
+        fun schema(name: String, references: References? = null): Schema = Schema(name, references)
     }
 }
 

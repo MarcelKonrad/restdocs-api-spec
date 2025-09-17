@@ -2,11 +2,13 @@ package com.epages.restdocs.apispec.openapi3
 
 import com.epages.restdocs.apispec.jsonschema.JsonSchemaFromFieldDescriptorsGenerator
 import com.epages.restdocs.apispec.model.AbstractParameterDescriptor
+import com.epages.restdocs.apispec.model.Criterion
 import com.epages.restdocs.apispec.model.FieldDescriptor
 import com.epages.restdocs.apispec.model.HTTPMethod
 import com.epages.restdocs.apispec.model.HeaderDescriptor
 import com.epages.restdocs.apispec.model.Oauth2Configuration
 import com.epages.restdocs.apispec.model.ParameterDescriptor
+import com.epages.restdocs.apispec.model.References
 import com.epages.restdocs.apispec.model.RequestModel
 import com.epages.restdocs.apispec.model.ResourceModel
 import com.epages.restdocs.apispec.model.ResponseModel
@@ -27,10 +29,13 @@ import io.swagger.v3.oas.models.info.Contact
 import io.swagger.v3.oas.models.info.Info
 import io.swagger.v3.oas.models.media.ArraySchema
 import io.swagger.v3.oas.models.media.BooleanSchema
+import io.swagger.v3.oas.models.media.ComposedSchema
 import io.swagger.v3.oas.models.media.Content
+import io.swagger.v3.oas.models.media.Discriminator
 import io.swagger.v3.oas.models.media.IntegerSchema
 import io.swagger.v3.oas.models.media.MediaType
 import io.swagger.v3.oas.models.media.NumberSchema
+import io.swagger.v3.oas.models.media.ObjectSchema
 import io.swagger.v3.oas.models.media.Schema
 import io.swagger.v3.oas.models.media.StringSchema
 import io.swagger.v3.oas.models.parameters.HeaderParameter
@@ -329,6 +334,7 @@ object OpenApi3Generator {
 
         return requestByContentType
             .map { (contentType, requests) ->
+                val schema = requests.first().request.schema
                 toMediaType(
                     requestFields = requests.flatMap { it ->
                         if (it.request.contentType == "application/x-www-form-urlencoded") {
@@ -339,7 +345,8 @@ object OpenApi3Generator {
                     },
                     examplesWithOperationId = requests.filter { it.request.example != null }.map { it.operationId to it.request.example!! }.toMap(),
                     contentType = contentType,
-                    schemaName = requests.first().request.schema?.name
+                    schemaName = schema?.name,
+                    references = schema?.references,
                 )
             }.toMap()
             .let { contentTypeToMediaType ->
@@ -388,11 +395,13 @@ object OpenApi3Generator {
         }
         return responsesByContentType
             .map { (contentType, requests) ->
+                val schema = requests.first().response.schema
                 toMediaType(
                     requestFields = requests.flatMap { it.response.responseFields },
                     examplesWithOperationId = requests.map { it.operationId to it.response.example!! }.toMap(),
                     contentType = contentType,
-                    schemaName = requests.first().response.schema?.name
+                    schemaName = schema?.name,
+                    references = schema?.references
                 )
             }.toMap()
             .let { contentTypeToMediaType ->
@@ -409,10 +418,30 @@ object OpenApi3Generator {
         requestFields: List<FieldDescriptor>,
         examplesWithOperationId: Map<String, String>,
         contentType: String,
-        schemaName: String? = null
+        schemaName: String? = null,
+        references: References? = null
     ): Pair<String, MediaType> {
-        val schema = JsonSchemaFromFieldDescriptorsGenerator().generateSchema(requestFields, schemaName)
-            .let { Json.mapper().readValue<Schema<Any>>(it) }
+        val schema = if (references != null && references.schemaNames.isNotEmpty()) {
+            ComposedSchema().apply {
+                val schemas = references.schemaNames.map { ObjectSchema().`$ref`(it) }
+                when (references.criterion) {
+                    Criterion.ALL_OF -> allOf(schemas)
+                    Criterion.ANY_OF -> anyOf(schemas)
+                    Criterion.ONE_OF -> oneOf(schemas)
+                }
+                references.discriminator?.also { discriminator ->
+                    discriminator(
+                        Discriminator().apply {
+                            propertyName = discriminator.propertyName
+                            mapping = discriminator.mapping?.mapValues { (_, value) -> "#/components/schemas/$value" }
+                        }
+                    )
+                }
+            }
+        } else {
+            JsonSchemaFromFieldDescriptorsGenerator().generateSchema(requestFields, schemaName)
+                .let { Json.mapper().readValue<Schema<Any>>(it) }
+        }
 
         if (schemaName != null) schema.name = schemaName
 
