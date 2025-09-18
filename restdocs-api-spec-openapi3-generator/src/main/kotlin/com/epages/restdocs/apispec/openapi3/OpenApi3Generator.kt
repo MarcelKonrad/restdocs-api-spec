@@ -8,7 +8,6 @@ import com.epages.restdocs.apispec.model.HTTPMethod
 import com.epages.restdocs.apispec.model.HeaderDescriptor
 import com.epages.restdocs.apispec.model.Oauth2Configuration
 import com.epages.restdocs.apispec.model.ParameterDescriptor
-import com.epages.restdocs.apispec.model.References
 import com.epages.restdocs.apispec.model.RequestModel
 import com.epages.restdocs.apispec.model.ResourceModel
 import com.epages.restdocs.apispec.model.ResponseModel
@@ -47,6 +46,7 @@ import io.swagger.v3.oas.models.responses.ApiResponses
 import io.swagger.v3.oas.models.servers.Server
 import io.swagger.v3.oas.models.tags.Tag
 import java.math.BigDecimal
+import com.epages.restdocs.apispec.model.Schema as SchemaModel
 
 object OpenApi3Generator {
 
@@ -193,6 +193,12 @@ object OpenApi3Generator {
     }
 
     private fun extractOrFindSchema(schemasToKeys: MutableMap<Schema<Any>, String>, schema: Schema<Any>, schemaNameGenerator: (Schema<Any>) -> String): Schema<Any> {
+        if (schema is ComposedSchema && schema.name == null) {
+            schema.allOf(schema.allOf?.map { extractOrFindSchema(schemasToKeys, it, schemaNameGenerator) })
+            schema.anyOf(schema.anyOf?.map { extractOrFindSchema(schemasToKeys, it, schemaNameGenerator) })
+            schema.oneOf(schema.oneOf?.map { extractOrFindSchema(schemasToKeys, it, schemaNameGenerator) })
+            return schema
+        }
         val schemaKey = if (schemasToKeys.containsKey(schema)) {
             schemasToKeys[schema]!!
         } else {
@@ -334,20 +340,23 @@ object OpenApi3Generator {
 
         return requestByContentType
             .map { (contentType, requests) ->
-                val schema = requests.first().request.schema
-                toMediaType(
-                    requestFields = requests.flatMap { it ->
-                        if (it.request.contentType == "application/x-www-form-urlencoded") {
-                            it.request.formParameters.map { parameterDescriptor2FieldDescriptor(it) }
-                        } else {
-                            it.request.requestFields
+                val (schema, examplesWithOperationId) = requests.groupBy { it.request.schema?.name }
+                    .map { (_, requests) ->
+                        val requestSchema = requests.first().request.schema
+                        val requestFields = requests.flatMap { it ->
+                            if (it.request.contentType == "application/x-www-form-urlencoded") {
+                                it.request.formParameters.map { parameterDescriptor2FieldDescriptor(it) }
+                            } else {
+                                it.request.requestFields
+                            }
                         }
-                    },
-                    examplesWithOperationId = requests.filter { it.request.example != null }.map { it.operationId to it.request.example!! }.toMap(),
-                    contentType = contentType,
-                    schemaName = schema?.name,
-                    references = schema?.references,
-                )
+                        val examplesWithOperationId = requests.filter { it.request.example != null }
+                            .associate { it.operationId to it.request.example!! }
+                        modelToSchema(requestSchema, requestFields) to examplesWithOperationId
+                    }.let { schemas ->
+                        aggregateSchemas(schemas)
+                    }
+                toMediaType(examplesWithOperationId, contentType, schema)
             }.toMap()
             .let { contentTypeToMediaType ->
                 if (contentTypeToMediaType.isEmpty()) null
@@ -395,14 +404,17 @@ object OpenApi3Generator {
         }
         return responsesByContentType
             .map { (contentType, requests) ->
-                val schema = requests.first().response.schema
-                toMediaType(
-                    requestFields = requests.flatMap { it.response.responseFields },
-                    examplesWithOperationId = requests.map { it.operationId to it.response.example!! }.toMap(),
-                    contentType = contentType,
-                    schemaName = schema?.name,
-                    references = schema?.references
-                )
+                val (schema, examplesWithOperationId) = requests
+                    .groupBy { it.response.schema?.name }
+                    .map { (_, requests) ->
+                        val responseSchema = requests.first().response.schema
+                        val requestFields = requests.flatMap { it.response.responseFields }
+                        val examplesWithOperationId = requests.associate { it.operationId to it.response.example!! }
+                        modelToSchema(responseSchema, requestFields) to examplesWithOperationId
+                    }.let { schemas ->
+                        aggregateSchemas(schemas)
+                    }
+                toMediaType(examplesWithOperationId, contentType, schema)
             }.toMap()
             .let { contentTypeToMediaType ->
                 apiResponse
@@ -414,22 +426,36 @@ object OpenApi3Generator {
             }
     }
 
+    private fun aggregateSchemas(schemas: List<Pair<Schema<Any>, Map<String, String>>>): Pair<Schema<Any>, Map<String, String>> =
+        if (schemas.size == 1) {
+            schemas.single()
+        } else {
+            val refs = schemas.map { it.first }
+            val examplesWithOperationId = schemas.flatMap { it.second.entries }
+                .associate { it.key to it.value }
+            ComposedSchema().oneOf(refs) to examplesWithOperationId
+        }
+
     private fun toMediaType(
-        requestFields: List<FieldDescriptor>,
         examplesWithOperationId: Map<String, String>,
         contentType: String,
-        schemaName: String? = null,
-        references: References? = null
+        schema: Schema<Any>
     ): Pair<String, MediaType> {
-        val schema = if (references != null && references.schemaNames.isNotEmpty()) {
+        return contentType to MediaType()
+            .schema(schema)
+            .examples(examplesWithOperationId.map { it.key to Example().apply { value(it.value) } }.toMap().nullIfEmpty())
+    }
+
+    private fun modelToSchema(schema: SchemaModel?, requestFields: List<FieldDescriptor>): Schema<Any> =
+        if (schema?.references != null && schema.references!!.schemaNames.isNotEmpty()) {
             ComposedSchema().apply {
-                val schemas = references.schemaNames.map { ObjectSchema().`$ref`(it) }
-                when (references.criterion) {
+                val schemas = schema.references!!.schemaNames.map { ObjectSchema().`$ref`(it) }
+                when (schema.references!!.criterion) {
                     Criterion.ALL_OF -> allOf(schemas)
                     Criterion.ANY_OF -> anyOf(schemas)
                     Criterion.ONE_OF -> oneOf(schemas)
                 }
-                references.discriminator?.also { discriminator ->
+                schema.references!!.discriminator?.also { discriminator ->
                     discriminator(
                         Discriminator().apply {
                             propertyName = discriminator.propertyName
@@ -439,16 +465,13 @@ object OpenApi3Generator {
                 }
             }
         } else {
-            JsonSchemaFromFieldDescriptorsGenerator().generateSchema(requestFields, schemaName)
+            JsonSchemaFromFieldDescriptorsGenerator().generateSchema(requestFields, schema?.name)
                 .let { Json.mapper().readValue<Schema<Any>>(it) }
+        }.apply {
+            if (schema?.name != null) {
+                name = schema.name
+            }
         }
-
-        if (schemaName != null) schema.name = schemaName
-
-        return contentType to MediaType()
-            .schema(schema)
-            .examples(examplesWithOperationId.map { it.key to Example().apply { value(it.value) } }.toMap().nullIfEmpty())
-    }
 
     private fun extractPathParameters(resourceModel: ResourceModel): List<PathParameter> {
         val pathParameterNames = PATH_PARAMETER_PATTERN.findAll(resourceModel.request.path)
