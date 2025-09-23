@@ -254,7 +254,7 @@ mockMvc.perform(get("/carts/{id}", cartId)
 Similar to the way Spring REST Docs allows to use [bean validation constraints](https://docs.spring.io/spring-restdocs/docs/current/reference/html5/#documenting-your-api-constraints) to enhance your documentation, you can also use the constraints from your model classes to let `restdocs-api-spec` enrich the generated JsonSchemas.
 `restdocs-api-spec` provides the class [com.epages.restdocs.apispec.ConstrainedFields](restdocs-api-spec/src/main/kotlin/com/epages/restdocs/apispec/ConstrainedFields.kt) to generate `FieldDescriptor`s that contain information about the constraints on this field.
 
-Currently the following constraints are considered when generating JsonSchema from `FieldDescriptor`s that have been created via `com.epages.restdocs.apispec.ConstrainedFields`
+Currently, the following constraints are considered when generating JsonSchema from `FieldDescriptor`s that have been created via `com.epages.restdocs.apispec.ConstrainedFields`
 - `NotNull`, `NotEmpty`, and `NotBlank` annotated fields become required fields in the JsonSchema
 - for String fields annotated with `NotEmpty`, and `NotBlank` the `minLength` constraint in JsonSchema is set to 1
 - for String fields annotated with `Length` the `minLength` and `maxLength` constraints in JsonSchema are set to the value of the corresponding attribute of the annotation

@@ -8,11 +8,13 @@ internal object ConstraintResolver {
     // since validation-api 2.0 NotEmpty moved to javax.validation - we support both
     private val NOT_EMPTY_CONSTRAINTS = setOf(
         "org.hibernate.validator.constraints.NotEmpty",
-        "javax.validation.constraints.NotEmpty"
+        "javax.validation.constraints.NotEmpty",
+        "jakarta.validation.constraints.NotEmpty"
     )
 
     private val NOT_BLANK_CONSTRAINTS = setOf(
         "javax.validation.constraints.NotBlank",
+        "jakarta.validation.constraints.NotBlank",
         "org.hibernate.validator.constraints.NotBlank"
     )
 
@@ -22,23 +24,35 @@ internal object ConstraintResolver {
 
     private const val LENGTH_CONSTRAINT = "org.hibernate.validator.constraints.Length"
 
-    private const val SIZE_CONSTRAINT = "javax.validation.constraints.Size"
+    private val SIZE_CONSTRAINT = setOf(
+        "javax.validation.constraints.Size",
+        "jakarta.validation.constraints.Size"
+    )
 
-    private const val PATTERN_CONSTRAINT = "javax.validation.constraints.Pattern"
+    private val PATTERN_CONSTRAINT = setOf(
+        "javax.validation.constraints.Pattern",
+        "jakarta.validation.constraints.Pattern"
+    )
 
-    private const val MIN_CONSTRAINT = "javax.validation.constraints.Min"
+    private val MIN_CONSTRAINT = setOf(
+        "javax.validation.constraints.Min",
+        "jakarta.validation.constraints.Min"
+    )
 
-    private const val MAX_CONSTRAINT = "javax.validation.constraints.Max"
+    private val MAX_CONSTRAINT = setOf(
+        "javax.validation.constraints.Max",
+        "jakarta.validation.constraints.Max"
+    )
 
     internal fun maybeMinSizeArray(fieldDescriptor: FieldDescriptor?) = fieldDescriptor?.maybeSizeConstraint()?.let { it.configuration["min"] as? Int }
 
     internal fun maybeMaxSizeArray(fieldDescriptor: FieldDescriptor?) = fieldDescriptor?.maybeSizeConstraint()?.let { it.configuration["max"] as? Int }
 
-    private fun FieldDescriptor.maybeSizeConstraint() = findConstraints(this).firstOrNull { SIZE_CONSTRAINT == it.name }
+    private fun FieldDescriptor.maybeSizeConstraint() = findConstraints(this).firstOrNull { it.name in SIZE_CONSTRAINT }
 
     internal fun maybePattern(fieldDescriptor: FieldDescriptor?) = fieldDescriptor?.maybePatternConstraint()?.let { it.configuration["regexp"] as? String }
 
-    private fun FieldDescriptor.maybePatternConstraint() = findConstraints(this).firstOrNull { PATTERN_CONSTRAINT == it.name }
+    private fun FieldDescriptor.maybePatternConstraint() = findConstraints(this).firstOrNull { it.name in PATTERN_CONSTRAINT }
 
     internal fun minLengthString(fieldDescriptor: FieldDescriptor): Int? {
         return findConstraints(fieldDescriptor)
@@ -62,8 +76,8 @@ internal object ConstraintResolver {
         return findConstraints(fieldDescriptor)
             .mapNotNull {
                 when (it.name) {
-                    MIN_CONSTRAINT -> it.configuration["value"] as Int
-                    SIZE_CONSTRAINT -> it.configuration["min"] as? Int
+                    in MIN_CONSTRAINT -> it.configuration["value"] as Int
+                    in SIZE_CONSTRAINT -> it.configuration["min"] as? Int
                     else -> null
                 }
             }
@@ -74,8 +88,8 @@ internal object ConstraintResolver {
         return findConstraints(fieldDescriptor)
             .mapNotNull {
                 when (it.name) {
-                    MAX_CONSTRAINT -> it.configuration["value"] as Int
-                    SIZE_CONSTRAINT -> it.configuration["max"] as? Int
+                    in MAX_CONSTRAINT -> it.configuration["value"] as Int
+                    in SIZE_CONSTRAINT -> it.configuration["max"] as? Int
                     else -> null
                 }
             }
